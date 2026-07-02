@@ -16,7 +16,7 @@ std::map<std::string, std::string> WalletCore::handle(const Request& request) {
   if (request.method == "health") {
     return {
       {"service", "altbase-core"},
-      {"version", "0.1.0"},
+      {"version", "0.1.4"},
       {"status", "ok"},
       {"methods", "health,generateMnemonic,validateMnemonic,createWalletSecret,verifyWalletPassword,decryptWalletSecret,privacyWalletSecret,privacyLightWallet,deriveAddress,validateAddress,addressToScript,addressVariantsFromLegacy,estimateFee,planTransaction,buildTransaction,signTransaction"},
     };

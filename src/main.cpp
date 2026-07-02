@@ -11,7 +11,7 @@
 #endif
 
 #ifndef ALTBASE_CORE_VERSION
-#define ALTBASE_CORE_VERSION "0.1.0"
+#define ALTBASE_CORE_VERSION "0.1.4"
 #endif
 
 namespace {
