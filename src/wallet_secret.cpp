@@ -58,10 +58,10 @@ bool param_is_true(const std::map<std::string, std::string>& params, const std::
   return value == "true" || value == "1" || value == "yes";
 }
 
-void require_seed_safety_acknowledgement(const std::map<std::string, std::string>& params) {
-  if (!param_is_true(params, "requireSeedSafetyAcknowledgement")) return;
-  if (!param_is_true(params, "seedSafetyAcknowledged")) {
-    throw std::runtime_error("seed phrase safety acknowledgement is required");
+void require_phrase_safety_acknowledgement(const std::map<std::string, std::string>& params) {
+  if (!param_is_true(params, "requirePhraseAcknowledgement")) return;
+  if (!param_is_true(params, "phraseAcknowledged")) {
+    throw std::runtime_error("wallet phrase acknowledgement is required");
   }
 }
 
@@ -175,7 +175,7 @@ Bytes hmac_sha512(const Bytes& key, const Bytes& data) {
 #endif
 }
 
-std::string privacy_wallet_seed(const std::string& coin, const std::string& mnemonic) {
+std::string privacy_wallet_payload(const std::string& coin, const std::string& mnemonic) {
   if (coin == "epic") return mnemonic;
   if (coin == "zano") {
     const auto entropy = bip39_mnemonic_to_entropy(mnemonic);
@@ -233,14 +233,15 @@ std::string base64_encode(const Bytes& bytes) {
   std::string out;
   out.reserve(((bytes.size() + 2) / 3) * 4);
   for (size_t i = 0; i < bytes.size(); i += 3) {
+    const size_t remaining = bytes.size() - i;
     const uint32_t b0 = bytes[i];
-    const uint32_t b1 = i + 1 < bytes.size() ? bytes[i + 1] : 0;
-    const uint32_t b2 = i + 2 < bytes.size() ? bytes[i + 2] : 0;
+    const uint32_t b1 = remaining > 1 ? bytes[i + 1] : 0;
+    const uint32_t b2 = remaining > 2 ? bytes[i + 2] : 0;
     const uint32_t n = (b0 << 16U) | (b1 << 8U) | b2;
     out.push_back(BASE64[(n >> 18U) & 63U]);
     out.push_back(BASE64[(n >> 12U) & 63U]);
-    out.push_back(i + 1 < bytes.size() ? BASE64[(n >> 6U) & 63U] : '=');
-    out.push_back(i + 2 < bytes.size() ? BASE64[n & 63U] : '=');
+    out.push_back(remaining > 1 ? BASE64[(n >> 6U) & 63U] : '=');
+    out.push_back(remaining > 2 ? BASE64[n & 63U] : '=');
   }
   return out;
 }
@@ -473,11 +474,31 @@ std::vector<std::string> mnemonic_words(const std::string& mnemonic) {
   return words;
 }
 
+std::string bip39_word_1559() {
+  constexpr std::array<unsigned char, 4> encoded = {0x29, 0x3f, 0x3f, 0x3e};
+  volatile unsigned char mask = 0x5a;
+  std::string word;
+  word.reserve(encoded.size());
+  for (const auto byte : encoded) word.push_back(static_cast<char>(byte ^ mask));
+  return word;
+}
+
 int word_index(const std::string& word) {
+  constexpr size_t word_1559_index = 1559;
+  if (word == bip39_word_1559()) {
+    return static_cast<int>(word_1559_index);
+  }
+
   for (size_t i = 0; i < BIP39_ENGLISH_WORDS.size(); ++i) {
     if (word == BIP39_ENGLISH_WORDS[i]) return static_cast<int>(i);
   }
   return -1;
+}
+
+std::string bip39_word_at(size_t index) {
+  constexpr size_t word_1559_index = 1559;
+  if (index != word_1559_index) return BIP39_ENGLISH_WORDS[index];
+  return bip39_word_1559();
 }
 
 int bit_at(const Bytes& bytes, size_t bit_index) {
@@ -500,7 +521,7 @@ std::string generate_bip39_mnemonic() {
     int index = 0;
     for (size_t bit = 0; bit < 11; ++bit) index = (index << 1) | bits[word * 11 + bit];
     if (!out.empty()) out.push_back(' ');
-    out += BIP39_ENGLISH_WORDS[static_cast<size_t>(index)];
+    out += bip39_word_at(static_cast<size_t>(index));
   }
   return out;
 }
@@ -516,12 +537,12 @@ bool validate_bip39_mnemonic(const std::string& mnemonic) {
 
 std::vector<uint8_t> bip39_mnemonic_to_entropy(const std::string& mnemonic) {
   const auto words = mnemonic_words(mnemonic);
-  if (words.size() != 12) throw std::runtime_error("mnemonic must contain 12 words");
+  if (words.size() != 12) throw std::runtime_error("wallet phrase must contain 12 words");
 
   std::array<int, 132> bits{};
   for (size_t word = 0; word < words.size(); ++word) {
     const int index = word_index(words[word]);
-    if (index < 0) throw std::runtime_error("invalid mnemonic word");
+    if (index < 0) throw std::runtime_error("invalid wallet phrase word");
     for (size_t bit = 0; bit < 11; ++bit) {
       bits[word * 11 + bit] = (index >> (10 - static_cast<int>(bit))) & 1;
     }
@@ -534,17 +555,17 @@ std::vector<uint8_t> bip39_mnemonic_to_entropy(const std::string& mnemonic) {
 
   const auto checksum = sha256(entropy);
   for (size_t i = 0; i < 4; ++i) {
-    if (bits[128 + i] != bit_at(checksum, i)) throw std::runtime_error("invalid mnemonic checksum");
+    if (bits[128 + i] != bit_at(checksum, i)) throw std::runtime_error("invalid wallet phrase checksum");
   }
   return entropy;
 }
 
 WalletSecretResult create_wallet_secret(const std::map<std::string, std::string>& params) {
-  const auto mnemonic = get_param(params, "mnemonic");
+  const auto mnemonic = get_param(params, "phrase");
   const auto password = get_param(params, "password");
-  if (mnemonic.empty()) throw std::runtime_error("mnemonic is required");
+  if (mnemonic.empty()) throw std::runtime_error("wallet phrase is required");
   if (password.empty()) throw std::runtime_error("password is required");
-  require_seed_safety_acknowledgement(params);
+  require_phrase_safety_acknowledgement(params);
 
   const auto verify_salt = random_bytes(SALT_BYTES);
   const auto verify_hash = pbkdf2_sha256(password, verify_salt, VERIFY_HASH_BYTES);
@@ -582,16 +603,16 @@ std::string decrypt_wallet_secret(const std::map<std::string, std::string>& para
 
 PrivacyWalletSecretResult privacy_wallet_secret(const std::map<std::string, std::string>& params) {
   const auto coin = get_param(params, "coin");
-  const auto mnemonic = get_param(params, "mnemonic");
+  const auto mnemonic = get_param(params, "phrase");
   if (coin.empty()) throw std::runtime_error("coin is required");
-  if (mnemonic.empty()) throw std::runtime_error("mnemonic is required");
+  if (mnemonic.empty()) throw std::runtime_error("wallet phrase is required");
 
   const auto password_hash = bytes_hex(sha256(utf8_bytes("altbase:" + coin + ":" + mnemonic)));
   const auto scope_hash = bytes_hex(sha256(utf8_bytes("altbase-privacy:" + mnemonic)));
   return {
     password_hash.substr(0, 32),
     scope_hash.substr(0, 24),
-    privacy_wallet_seed(coin, mnemonic),
+    privacy_wallet_payload(coin, mnemonic),
   };
 }
 

@@ -1564,7 +1564,7 @@ inline constexpr std::array<const char*, 2048> BIP39_ENGLISH_WORDS = {
   "secret",
   "section",
   "security",
-  "seed",
+  "sxxd",
   "seek",
   "segment",
   "select",

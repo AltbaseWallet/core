@@ -481,7 +481,7 @@ AddressValidationResult validate_legacy_bch2_cashaddr_payload(
 std::string cashaddr_encode(const std::string& prefix, int type, const std::vector<uint8_t>& hash) {
   if (hash.size() != 20) throw std::runtime_error("unsupported cashaddr hash length");
   const auto normalized = lower(prefix);
-  const int version = (type << 3) | 0;
+  const int version = type << 3;
   std::vector<int> payload8{version};
   payload8.insert(payload8.end(), hash.begin(), hash.end());
   const auto payload5 = convert_bits(payload8, 8, 5, true);
@@ -573,6 +573,17 @@ AddressValidationResult validate_address(const std::map<std::string, std::string
 
 std::vector<AddressVariantResult> address_variants_from_legacy(const std::map<std::string, std::string>& params) {
   const auto address = trim_address(get_param(params, "address"));
+  if (get_param(params, "addressType") == "p2wpkh") {
+    const auto validated = validate_address({
+      {"address", address},
+      {"bech32Hrp", get_param(params, "bech32Hrp")},
+      {"addressType", "p2wpkh"},
+    });
+    if (!validated.is_valid || validated.script_kind != "p2wpkh") {
+      throw std::runtime_error(validated.error.empty() ? "invalid segwit address" : validated.error);
+    }
+    return {{"bech32", "Bech32", address, "p2wpkh", false}};
+  }
   if (get_param(params, "addressType") == "p2tr") {
     const auto validated = validate_address({
       {"address", address},

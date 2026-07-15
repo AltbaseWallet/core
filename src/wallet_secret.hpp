@@ -18,7 +18,7 @@ struct WalletSecretResult {
 struct PrivacyWalletSecretResult {
   std::string engine_password;
   std::string scope;
-  std::string seed;
+  std::string payload;
 };
 
 std::string generate_bip39_mnemonic();

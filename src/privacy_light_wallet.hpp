@@ -24,6 +24,13 @@ struct PrivacyLightWalletResult {
   std::string native_wallet_file_size;
 };
 
+struct PrivacyModuleScopeResult {
+  std::string engine_password;
+  std::string scope;
+  std::string payload;
+};
+
+PrivacyModuleScopeResult privacy_module_scope(const std::map<std::string, std::string>& params);
 PrivacyLightWalletResult privacy_light_wallet(const std::map<std::string, std::string>& params);
 
 }  // namespace altbase

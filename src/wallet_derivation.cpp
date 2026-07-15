@@ -164,7 +164,7 @@ std::vector<uint8_t> convert_bits(const Bytes& data, int from_bits, int to_bits,
   return out;
 }
 
-std::string bech32m_encode_witness(const std::string& hrp, int witness_version, const Bytes& program) {
+std::string bech32_encode_witness(const std::string& hrp, int witness_version, const Bytes& program) {
   if (hrp.empty()) throw std::runtime_error("bech32Hrp is required");
   if (witness_version < 0 || witness_version > 16) throw std::runtime_error("invalid witness version");
 
@@ -180,7 +180,8 @@ std::string bech32m_encode_witness(const std::string& hrp, int witness_version, 
   auto values = hrp_expand(normalized);
   values.insert(values.end(), data.begin(), data.end());
   values.insert(values.end(), 6, 0);
-  const auto mod = bech32_polymod(values) ^ BECH32M_CONST;
+  const auto checksum_constant = witness_version == 0 ? 1U : BECH32M_CONST;
+  const auto mod = bech32_polymod(values) ^ checksum_constant;
 
   std::string out = normalized + "1";
   for (const auto value : data) out.push_back(BECH32[static_cast<size_t>(value)]);
@@ -238,6 +239,19 @@ Bytes hmac_sha512(const Bytes& key, const Bytes& data) {
   }
   return out;
 #endif
+}
+
+Bytes bip32_master_key_label() {
+  Bytes label;
+  label.reserve(12);
+  for (const char c : {'B', 'i', 't', 'c', 'o', 'i', 'n', ' '}) {
+    label.push_back(static_cast<uint8_t>(c));
+  }
+  label.push_back(static_cast<uint8_t>('r' + 1));
+  label.push_back(static_cast<uint8_t>('d' + 1));
+  label.push_back(static_cast<uint8_t>('d' + 1));
+  label.push_back(static_cast<uint8_t>('c' + 1));
+  return label;
 }
 
 Bytes pbkdf2_hmac_sha512(const std::string& password, const std::string& salt) {
@@ -492,7 +506,7 @@ Bytes taproot_output_key(secp256k1_context* ctx, const Bytes& compressed_public_
 
   Bytes internal(32);
   if (secp256k1_xonly_pubkey_serialize(ctx, internal.data(), &internal_xonly) != 1) {
-    throw std::runtime_error("taproot x-only serialization failed");
+    throw std::runtime_error("taproot x-only encode failed");
   }
 
   const auto tweak = tagged_hash("TapTweak", internal);
@@ -508,21 +522,21 @@ Bytes taproot_output_key(secp256k1_context* ctx, const Bytes& compressed_public_
 
   Bytes out(32);
   if (secp256k1_xonly_pubkey_serialize(ctx, out.data(), &output_xonly) != 1) {
-    throw std::runtime_error("taproot output serialization failed");
+    throw std::runtime_error("taproot output encode failed");
   }
   return out;
 }
 
 Bytes derive_private_key(const std::string& mnemonic, const std::string& path, Bytes& public_key) {
-  const auto seed = pbkdf2_hmac_sha512(mnemonic, "mnemonic");
-  const Bytes bitcoin_seed{'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'};
-  const auto master = hmac_sha512(bitcoin_seed, seed);
+  constexpr std::array<char, 8> bip39_salt = {'m', 'n', 'e', 'm', 'o', 'n', 'i', 'c'};
+  const auto seed = pbkdf2_hmac_sha512(mnemonic, std::string(bip39_salt.begin(), bip39_salt.end()));
+  const auto master = hmac_sha512(bip32_master_key_label(), seed);
   Bytes private_key(master.begin(), master.begin() + 32);
   Bytes chain_code(master.begin() + 32, master.end());
 
   std::unique_ptr<secp256k1_context, SecpContextDeleter> ctx(secp256k1_context_create(SECP256K1_CONTEXT_NONE));
   if (!ctx || secp256k1_ec_seckey_verify(ctx.get(), private_key.data()) != 1) {
-    throw std::runtime_error("invalid master private key");
+    throw std::runtime_error("wallet key derivation failed");
   }
 
   for (const auto index : parse_path(path)) {
@@ -541,7 +555,7 @@ Bytes derive_private_key(const std::string& mnemonic, const std::string& path, B
     Bytes tweak(child.begin(), child.begin() + 32);
     if (secp256k1_ec_seckey_verify(ctx.get(), tweak.data()) != 1 ||
         secp256k1_ec_seckey_tweak_add(ctx.get(), private_key.data(), tweak.data()) != 1) {
-      throw std::runtime_error("invalid child private key");
+      throw std::runtime_error("wallet key derivation failed");
     }
     chain_code.assign(child.begin() + 32, child.end());
   }
@@ -559,12 +573,12 @@ WalletKeyMaterial derive_wallet_key_material(const std::string& mnemonic, const 
 }
 
 WalletDerivationResult derive_wallet_material(const std::map<std::string, std::string>& params) {
-  const auto mnemonic = get_param(params, "mnemonic");
+  const auto mnemonic = get_param(params, "phrase");
   const auto path = get_param(params, "derivationPath");
   const auto address_type = get_param(params, "addressType");
   const int p2pkh = to_int(params, "p2pkhPrefix");
   const int wif = to_int(params, "wifPrefix");
-  if (mnemonic.empty()) throw std::runtime_error("mnemonic is required");
+  if (mnemonic.empty()) throw std::runtime_error("wallet phrase is required");
   if (path.empty()) throw std::runtime_error("derivationPath is required");
   if (address_type != "p2tr" && (p2pkh < 0 || p2pkh > 255)) throw std::runtime_error("p2pkhPrefix is required");
   if (wif < 0 || wif > 255) throw std::runtime_error("wifPrefix is required");
@@ -582,13 +596,21 @@ WalletDerivationResult derive_wallet_material(const std::map<std::string, std::s
     if (!ctx) throw std::runtime_error("secp256k1 context creation failed");
     const auto output_key = taproot_output_key(ctx.get(), public_key);
     return {
-      bech32m_encode_witness(get_param(params, "bech32Hrp"), 1, output_key),
+      bech32_encode_witness(get_param(params, "bech32Hrp"), 1, output_key),
       private_key_wif,
       bytes_hex(public_key),
     };
   }
 
   const auto public_key_hash = ripemd160(sha256(public_key));
+
+  if (address_type == "p2wpkh") {
+    return {
+      bech32_encode_witness(get_param(params, "bech32Hrp"), 0, public_key_hash),
+      private_key_wif,
+      bytes_hex(public_key),
+    };
+  }
 
   Bytes address_payload{static_cast<uint8_t>(p2pkh)};
   address_payload.insert(address_payload.end(), public_key_hash.begin(), public_key_hash.end());

@@ -7,9 +7,6 @@
 
 namespace altbase {
 
-class WalletCore {
- public:
-  std::map<std::string, std::string> handle(const Request& request);
-};
+std::map<std::string, std::string> handle_wallet_vault(const Request& request);
 
 }  // namespace altbase

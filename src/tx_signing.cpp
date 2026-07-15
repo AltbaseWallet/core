@@ -473,7 +473,7 @@ Bytes sign_taproot_key_path(
 
   Bytes internal(32);
   if (secp256k1_xonly_pubkey_serialize(ctx, internal.data(), &xonly) != 1) {
-    throw std::runtime_error("taproot x-only serialization failed");
+    throw std::runtime_error("taproot x-only encode failed");
   }
 
   const auto tweak = tagged_hash("TapTweak", internal);
@@ -522,9 +522,9 @@ std::vector<TxOut> parse_outputs(const std::string& encoded) {
 }  // namespace
 
 SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::string>& params) {
-  const auto mnemonic = get_param(params, "mnemonic");
+  const auto mnemonic = get_param(params, "phrase");
   const auto derivation_path = get_param(params, "derivationPath");
-  if (mnemonic.empty()) throw std::runtime_error("mnemonic is required");
+  if (mnemonic.empty()) throw std::runtime_error("wallet phrase is required");
   if (derivation_path.empty()) throw std::runtime_error("derivationPath is required");
 
   auto inputs = parse_inputs(get_param(params, "inputs"));
@@ -586,7 +586,10 @@ SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::s
     }
   }
 
-  return {to_hex(serialize_tx(inputs, outputs, has_witness, tx_version))};
+  const auto signed_bytes = serialize_tx(inputs, outputs, has_witness, tx_version);
+  auto txid_bytes = hash256(serialize_tx(inputs, outputs, false, tx_version));
+  std::reverse(txid_bytes.begin(), txid_bytes.end());
+  return {to_hex(signed_bytes), to_hex(txid_bytes)};
 }
 
 }  // namespace altbase
