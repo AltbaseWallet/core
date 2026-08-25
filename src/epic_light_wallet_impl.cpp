@@ -251,7 +251,7 @@ std::string epic_node_url(const std::map<std::string, std::string>& params) {
 }
 
 std::string call_epic_module(const std::string& request, const std::string& action) {
-  const bool sending = action == "send";
+  const bool sending = action == "send" || action == "estimatemax";
   char* raw = sending
     ? altbase_epic_sender_request(request.c_str())
     : altbase_epic_state_request(request.c_str());
@@ -278,12 +278,19 @@ std::string build_request(
   if (is_decimal_number(restore_start_height)) {
     request << ",\"restoreStartHeight\":" << restore_start_height;
   }
+  const auto force_rescan = lower(get_param(params, "forceRescan"));
+  if (force_rescan == "true" || force_rescan == "1" || force_rescan == "yes") {
+    request << ",\"forceRescan\":true";
+  }
   if (action == "send") {
     request << ",\"to\":\"" << json_escape(get_param(params, "to")) << "\","
             << "\"amount\":\"" << json_escape(get_param(params, "amount")) << "\","
             << "\"fee\":\"" << json_escape(get_param(params, "fee")) << "\","
             << "\"sendMax\":\"" << json_escape(get_param(params, "sendMax")) << "\","
             << "\"memo\":\"" << json_escape(get_param(params, "memo")) << "\"";
+  } else if (action == "estimatemax") {
+    request << ",\"fee\":\"" << json_escape(get_param(params, "fee")) << "\","
+            << "\"sendMax\":\"true\"";
   }
   request << '}';
   return request.str();
@@ -319,7 +326,7 @@ PrivacyLightWalletResult privacy_light_wallet(const std::map<std::string, std::s
 
   auto action = lower(get_param(params, "action"));
   if (action == "warm") action = "ensure";
-  if (action != "ensure" && action != "snapshot" && action != "send") {
+  if (action != "ensure" && action != "snapshot" && action != "send" && action != "estimatemax") {
     return not_ready("bad-action", "Unsupported Epic wallet action");
   }
 

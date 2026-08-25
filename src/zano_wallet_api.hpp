@@ -8,7 +8,7 @@
 #endif
 #define ALTBASE_ZANO_WALLET_CALL __cdecl
 #else
-#define ALTBASE_ZANO_WALLET_API extern "C"
+#define ALTBASE_ZANO_WALLET_API extern "C" __attribute__((visibility("default")))
 #define ALTBASE_ZANO_WALLET_CALL
 #endif
 

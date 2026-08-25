@@ -261,6 +261,7 @@ altbase_add_coin_node_module(pearl Pearl)
 altbase_add_coin_node_module(zano Zano)
 altbase_add_coin_node_module(epic Epic)
 altbase_add_coin_node_module(quai Quai)
+altbase_add_coin_node_module(xgr XGR)
 altbase_add_coin_node_module(qubic Qubic)
 altbase_add_coin_node_module(kaspa Kaspa)
 altbase_add_coin_node_module(ckb NervosCKB)
@@ -500,6 +501,7 @@ function(altbase_add_privacy_wallet_module coin export_definition coin_definitio
     add_library(${target} SHARED
       ${ALTBASE_PRIVACY_WALLET_SOURCES}
       src/epic_light_wallet_impl.cpp
+      src/epic_wallet_state_archive.cpp
     )
   else()
     add_library(${target} SHARED
@@ -541,6 +543,39 @@ altbase_add_privacy_wallet_module(zano ALTBASE_ZANO_WALLET_EXPORTS ALTBASE_ZANO_
 altbase_add_privacy_wallet_module(epic ALTBASE_EPIC_WALLET_EXPORTS ALTBASE_EPIC_WALLET_ONLY)
 set_target_properties(altbase_epic_wallet PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 
+# The official Zano wallet implementation uses protocol types to decode the
+# compact server response, while the actual protocol core remains a separate
+# runtime module. Supply only the upstream headers and compile definitions; do
+# not fork or embed the Zano implementation in this target.
+target_compile_definitions(altbase_zano_wallet PRIVATE
+  STATICLIB
+  DISABLE_TOR
+  DISABLE_PFR_SERIALIZATION_SELFCHECK
+  USE_OPEN_SSL_FOR_ECDSA
+)
+target_include_directories(altbase_zano_wallet PRIVATE
+  "${ZANO_SOURCE_ROOT}/src"
+  "${ZANO_SOURCE_ROOT}/contrib"
+  "${ZANO_SOURCE_ROOT}/contrib/eos_portable_archive"
+  "${ZANO_SOURCE_ROOT}/contrib/epee/include"
+  "${ZANO_SOURCE_ROOT}/contrib/jwt-cpp/include"
+)
+if (WIN32)
+  target_include_directories(altbase_zano_wallet PRIVATE ${ZANO_WINDOWS_INCLUDE_DIRS})
+elseif(APPLE)
+  target_include_directories(altbase_zano_wallet PRIVATE
+    "${ZANO_MACOS_BOOST_ROOT}/Headers"
+    "${ZANO_MACOS_OPENSSL_ROOT}/Headers"
+    "${ZANO_MACOS_ICONV_ROOT}/Headers"
+    "${ZANO_MACOS_VERSION_DIR}"
+  )
+else()
+  target_include_directories(altbase_zano_wallet PRIVATE
+    "${ZANO_LINUX_BUILD_ROOT}/version"
+    "${ZANO_LINUX_BUILD_ROOT}/contrib/zlib"
+  )
+endif()
+
 if (WIN32)
   if (NOT TARGET altbase_zano_core)
     message(FATAL_ERROR "Zano protocol core was not built; the Zano wallet module cannot be linked")
@@ -555,9 +590,99 @@ if (WIN32)
   )
   altbase_add_module_version(altbase_zano_wallet "altbase_zano_wallet.dll" "AltbaseZanoWallet" "Altbase Zano Wallet Module")
   altbase_add_module_version(altbase_epic_wallet "altbase_epic_wallet.dll" "AltbaseEpicWallet" "Altbase Epic Wallet Module")
+elseif(UNIX AND NOT APPLE)
+  if (NOT TARGET altbase_zano_core)
+    message(FATAL_ERROR "Zano protocol core was not built; the Zano wallet module cannot be linked")
+  endif()
+
+  # The privacy wallet calls a small set of Zano protocol primitives directly.
+  # Keep the protocol implementation in the official static archives and expose
+  # only the wallet module ABI from this shared object.
+  target_link_libraries(altbase_zano_wallet PRIVATE
+    "-Wl,--start-group"
+    "${ZANO_LINUX_SRC}/libwallet.a"
+    "${ZANO_LINUX_SRC}/librpc.a"
+    "${ZANO_LINUX_SRC}/libcurrency_core.a"
+    "${ZANO_LINUX_SRC}/libcrypto.a"
+    "${ZANO_LINUX_SRC}/libcommon.a"
+    "${ZANO_LINUX_CONTRIB}/db/liblmdb/liblmdb.a"
+    "${ZANO_LINUX_CONTRIB}/db/libmdbx/libmdbx.a"
+    "${ZANO_LINUX_CONTRIB}/zlib/libz.a"
+    "${ZANO_LINUX_CONTRIB}/miniupnp/miniupnpc/libminiupnpc.a"
+    "-Wl,--end-group"
+    Threads::Threads
+    ${Boost_LIBRARIES}
+    OpenSSL::SSL
+    OpenSSL::Crypto
+  )
+
+  set(EPIC_MODULE_RELEASE_DIR "$ENV{ALTBASE_EPIC_TRANSPORT_LIB_DIR}")
+  if (EPIC_MODULE_RELEASE_DIR STREQUAL "")
+    set(EPIC_MODULE_RELEASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../epic_core/target/release")
+  endif()
+  foreach(epic_component IN ITEMS state sender transport)
+    set(epic_library "${EPIC_MODULE_RELEASE_DIR}/libaltbase_epic_${epic_component}.so")
+    if (NOT EXISTS "${epic_library}")
+      message(FATAL_ERROR "Epic protocol module was not built: ${epic_library}")
+    endif()
+    add_library(altbase_epic_${epic_component}_runtime SHARED IMPORTED)
+    set_target_properties(altbase_epic_${epic_component}_runtime PROPERTIES
+      IMPORTED_LOCATION "${epic_library}"
+      IMPORTED_NO_SONAME TRUE
+    )
+  endforeach()
+  target_link_libraries(altbase_epic_wallet PRIVATE
+    altbase_epic_state_runtime
+    altbase_epic_sender_runtime
+    altbase_epic_transport_runtime
+  )
+  target_link_options(altbase_zano_wallet PRIVATE
+    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/zano_wallet.exports"
+  )
+  target_compile_options(altbase_zano_wallet PRIVATE -fno-gnu-unique)
+  set_target_properties(altbase_zano_wallet PROPERTIES
+    LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/zano_wallet.exports"
+  )
+elseif(APPLE)
+  if (NOT TARGET altbase_zano_core)
+    message(FATAL_ERROR "Zano protocol core was not built; the Zano wallet module cannot be linked")
+  endif()
+  target_link_libraries(altbase_zano_wallet PRIVATE
+    "${ZANO_MACOS_PLAIN_WALLET_LIB}"
+    Threads::Threads
+    "-framework Foundation"
+    "-framework Security"
+    "-framework CoreFoundation"
+    "-framework SystemConfiguration"
+    "-liconv"
+  )
+
+  set(EPIC_MODULE_RELEASE_DIR "$ENV{ALTBASE_EPIC_TRANSPORT_LIB_DIR}")
+  if (EPIC_MODULE_RELEASE_DIR STREQUAL "")
+    message(FATAL_ERROR "ALTBASE_EPIC_TRANSPORT_LIB_DIR is required for the macOS Epic wallet module")
+  endif()
+  foreach(epic_component IN ITEMS state sender transport)
+    set(epic_library "${EPIC_MODULE_RELEASE_DIR}/libaltbase_epic_${epic_component}.dylib")
+    if (NOT EXISTS "${epic_library}")
+      message(FATAL_ERROR "Epic protocol module was not built: ${epic_library}")
+    endif()
+    add_library(altbase_epic_${epic_component}_runtime SHARED IMPORTED)
+    set_target_properties(altbase_epic_${epic_component}_runtime PROPERTIES
+      IMPORTED_LOCATION "${epic_library}"
+    )
+  endforeach()
+  target_link_libraries(altbase_epic_wallet PRIVATE
+    altbase_epic_state_runtime
+    altbase_epic_sender_runtime
+    altbase_epic_transport_runtime
+  )
+  target_link_options(altbase_zano_wallet PRIVATE
+    "LINKER:-exported_symbol,_altbase_zano_wallet_free"
+    "LINKER:-exported_symbol,_altbase_zano_wallet_request"
+  )
 endif()
 
-target_link_libraries(altbase_core_bridge PRIVATE altbase_zano_wallet altbase_epic_wallet)
+target_link_libraries(altbase_core_bridge PRIVATE altbase_zano_wallet altbase_epic_wallet ${CMAKE_DL_LIBS})
 target_compile_definitions(altbase_core_bridge PRIVATE ALTBASE_SEPARATE_PRIVACY_MODULES=1)
 
 target_include_directories(altbase_core_bridge PRIVATE
@@ -756,11 +881,19 @@ if (MSVC)
 else()
   target_compile_options(altbase_core_bridge PRIVATE -Wall -Wextra -Wpedantic)
   foreach(utxo_service IN LISTS ALTBASE_UTXO_SERVICE_TARGETS)
-    target_compile_options(${utxo_service} PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(${utxo_service} PRIVATE
+      -Wall -Wextra -Wpedantic -fvisibility=hidden -fvisibility-inlines-hidden
+    )
   endforeach()
-  target_compile_options(altbase_wallet_vault PRIVATE -Wall -Wextra -Wpedantic)
-  target_compile_options(altbase_zano_wallet PRIVATE -Wall -Wextra -Wpedantic)
-  target_compile_options(altbase_epic_wallet PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(altbase_wallet_vault PRIVATE
+    -Wall -Wextra -Wpedantic -fvisibility=hidden -fvisibility-inlines-hidden
+  )
+  target_compile_options(altbase_zano_wallet PRIVATE
+    -Wall -Wextra -Wpedantic -fvisibility=hidden -fvisibility-inlines-hidden
+  )
+  target_compile_options(altbase_epic_wallet PRIVATE
+    -Wall -Wextra -Wpedantic -fvisibility=hidden -fvisibility-inlines-hidden
+  )
   if (TARGET altbase_zano_core)
     target_compile_options(altbase_zano_core PRIVATE -Wall -Wextra -Wpedantic)
   endif()

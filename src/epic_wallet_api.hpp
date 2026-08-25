@@ -8,7 +8,7 @@
 #endif
 #define ALTBASE_EPIC_WALLET_CALL __cdecl
 #else
-#define ALTBASE_EPIC_WALLET_API extern "C"
+#define ALTBASE_EPIC_WALLET_API extern "C" __attribute__((visibility("default")))
 #define ALTBASE_EPIC_WALLET_CALL
 #endif
 

@@ -11,6 +11,7 @@
 constexpr const char* kModuleCoin = "zano";
 #elif defined(ALTBASE_EPIC_WALLET_EXPORTS)
 #include "epic_wallet_api.hpp"
+#include "epic_wallet_state_archive.hpp"
 #define ALTBASE_COIN_WALLET_API ALTBASE_EPIC_WALLET_API
 #define ALTBASE_COIN_WALLET_CALL ALTBASE_EPIC_WALLET_CALL
 #define ALTBASE_COIN_WALLET_REQUEST altbase_epic_wallet_request
@@ -72,7 +73,15 @@ ALTBASE_COIN_WALLET_API char* ALTBASE_COIN_WALLET_CALL ALTBASE_COIN_WALLET_REQUE
     }
 
     if (parsed->method == "privacyLightWallet") {
+#if defined(ALTBASE_EPIC_WALLET_EXPORTS)
+      const auto secret = altbase::privacy_wallet_secret(parsed->params);
+      (void)altbase::import_epic_wallet_state_archive(parsed->params, secret.scope);
+      auto result = altbase::privacy_light_wallet(parsed->params);
+      altbase::attach_epic_wallet_state_archive(result, parsed->params, secret.scope);
+      return copy_response(altbase::ok_response(id, fields_from_result(result)));
+#else
       return copy_response(altbase::ok_response(id, fields_from_result(altbase::privacy_light_wallet(parsed->params))));
+#endif
     }
     if (parsed->method == "privacyScope") {
       const auto secret = altbase::privacy_wallet_secret(parsed->params);

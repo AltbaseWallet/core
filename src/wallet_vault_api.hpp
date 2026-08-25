@@ -8,7 +8,7 @@
 #endif
 #define ALTBASE_VAULT_CALL __cdecl
 #else
-#define ALTBASE_VAULT_API extern "C"
+#define ALTBASE_VAULT_API extern "C" __attribute__((visibility("default")))
 #define ALTBASE_VAULT_CALL
 #endif
 

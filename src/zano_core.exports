@@ -1,0 +1,7 @@
+{
+  global:
+    altbase_zano_free;
+    altbase_zano_request;
+  local:
+    *;
+};
