@@ -302,12 +302,14 @@ Bytes sign_input_legacy(
   const Bytes& script_code,
   const Bytes& private_key,
   const Bytes& public_key,
-  uint32_t tx_version
+  uint32_t tx_version,
+  uint32_t replay_domain
 ) {
   auto signing = inputs;
   for (size_t i = 0; i < signing.size(); ++i) signing[i].script_sig = i == index ? script_code : Bytes{};
   auto preimage = serialize_tx(signing, outputs, false, tx_version);
   append(preimage, u32le(SIGHASH_ALL));
+  if (replay_domain != 0) append(preimage, u32le(replay_domain));
   return legacy_script_sig(sign_der_with_type(ctx, hash256(preimage), private_key, SIGHASH_ALL), public_key);
 }
 
@@ -360,7 +362,8 @@ std::vector<Bytes> sign_input_segwit_v0(
   const Bytes& private_key,
   const Bytes& public_key,
   uint32_t sighash_type,
-  uint32_t tx_version
+  uint32_t tx_version,
+  uint32_t replay_domain
 ) {
   std::vector<Bytes> prevouts_parts;
   std::vector<Bytes> sequence_parts;
@@ -389,6 +392,7 @@ std::vector<Bytes> sign_input_segwit_v0(
   append(preimage, hash256(concat(output_parts)));
   append(preimage, u32le(0));
   append(preimage, u32le(sighash_type));
+  if (replay_domain != 0) append(preimage, u32le(replay_domain));
   return {sign_der_with_type(ctx, hash256(preimage), private_key, sighash_type), public_key};
 }
 
@@ -410,7 +414,8 @@ Bytes taproot_sighash(
   const std::vector<TxIn>& inputs,
   const std::vector<TxOut>& outputs,
   size_t index,
-  uint32_t tx_version
+  uint32_t tx_version,
+  uint32_t replay_domain
 ) {
   std::vector<Bytes> prevouts_parts;
   std::vector<Bytes> amount_parts;
@@ -434,6 +439,7 @@ Bytes taproot_sighash(
 
   Bytes msg;
   msg.push_back(0x00); // BIP341 epoch.
+  if (replay_domain != 0) append(msg, u32le(replay_domain));
   msg.push_back(0x00); // SIGHASH_DEFAULT.
   append(msg, u32le(tx_version));
   append(msg, u32le(0));
@@ -530,6 +536,9 @@ SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::s
   auto inputs = parse_inputs(get_param(params, "inputs"));
   const auto outputs = parse_outputs(get_param(params, "outputs"));
   const auto tx_version = parse_tx_version(params);
+  // Bitcoin II mainnet activates this domain at height 57750 (Core v31.1.0).
+  // The on-wire signature hash-type byte remains SIGHASH_ALL / DEFAULT.
+  const uint32_t replay_domain = get_param(params, "sighashStyle") == "bc2-replay" ? 0x01324342U : 0;
   const bool use_bip143 = get_param(params, "sighashStyle") == "bip143-forkid";
   const bool use_taproot = get_param(params, "sighashStyle") == "taproot" || get_param(params, "addressType") == "p2tr";
   const auto key_material = derive_wallet_key_material(mnemonic, derivation_path);
@@ -544,7 +553,7 @@ SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::s
       if (!is_p2tr_script(script_code)) throw std::runtime_error("taproot transaction requires p2tr inputs");
       inputs[i].witness = {sign_taproot_key_path(
         ctx.get(),
-        taproot_sighash(inputs, outputs, i, tx_version),
+        taproot_sighash(inputs, outputs, i, tx_version, replay_domain),
         key_material.private_key
       )};
       has_witness = true;
@@ -558,7 +567,8 @@ SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::s
         key_material.private_key,
         key_material.public_key,
         use_bip143 ? SIGHASH_ALL_FORKID : SIGHASH_ALL,
-        tx_version
+        tx_version,
+        replay_domain
       );
       has_witness = true;
     } else if (use_bip143) {
@@ -581,7 +591,8 @@ SignedTransactionResult sign_utxo_transaction(const std::map<std::string, std::s
         script_code,
         key_material.private_key,
         key_material.public_key,
-        tx_version
+        tx_version,
+        replay_domain
       );
     }
   }

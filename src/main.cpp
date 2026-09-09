@@ -191,9 +191,9 @@ char* dispatch_request(const std::string& line, void (**release)(char*)) {
       {"utxo", "bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl"},
       {"privacy", "zano,epic,monero"},
       {"account", "quai,xgr,qubic"},
-      {"dag", "kaspa"},
+      {"dag", "kaspa,nonsense"},
       {"cell", "ckb"},
-      {"node", "bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl,zano,epic,quai,xgr,qubic,kaspa,ckb"},
+      {"node", "bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl,zano,epic,quai,xgr,qubic,kaspa,nonsense,ckb"},
     }));
   }
 #ifdef ALTBASE_SEPARATE_PRIVACY_MODULES
@@ -262,6 +262,7 @@ char* dispatch_request(const std::string& line, void (**release)(char*)) {
     {"xgr", {altbase_xgr_node_request, altbase_xgr_node_free}},
     {"qubic", {altbase_qubic_node_request, altbase_qubic_node_free}},
     {"kaspa", {altbase_kaspa_node_request, altbase_kaspa_node_free}},
+    {"nonsense", {altbase_nonsense_node_request, altbase_nonsense_node_free}},
     {"ckb", {altbase_ckb_node_request, altbase_ckb_node_free}},
   };
   if (parsed.has_value() && parsed->method == "coinNodeRequest") {

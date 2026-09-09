@@ -1,7 +1,9 @@
+#include "zano_native_readiness.hpp"
 #include "privacy_light_wallet.hpp"
 
 #include "epic_module_api.hpp"
 #include "native_http.hpp"
+#include "privacy_scan_info.hpp"
 #include "wallet_secret.hpp"
 #include "zano_module_api.hpp"
 
@@ -1090,18 +1092,13 @@ struct ZanoBalance {
 };
 
 bool zano_status_ready(const std::string& status) {
-  const auto state_text = regex_number(status, "wallet_state");
-  const auto daemon_text = regex_number(status, "current_daemon_height");
-  const auto wallet_text = regex_number(status, "current_wallet_height");
-  if (daemon_text.empty() || wallet_text.empty()) return state_text == "2";
-  const auto daemon_height = std::stoull(daemon_text);
-  const auto wallet_height = std::stoull(wallet_text);
-  return state_text == "2" || (daemon_height > 0 && wallet_height + 2 >= daemon_height);
+  return zano_native_scan_ready(regex_number(status, "wallet_state"),
+    regex_number(status, "current_wallet_height"), regex_number(status, "current_daemon_height"));
 }
 
 void set_zano_wallet_height(PrivacyLightWalletResult& result, const std::string& status) {
   const auto wallet_text = regex_number(status, "current_wallet_height");
-  if (!wallet_text.empty()) result.last_scanned_height = wallet_text;
+  if (!wallet_text.empty()) result.last_scanned_height = std::to_string(zano_scanned_block_count(std::stoull(wallet_text)));
 }
 
 void emit_privacy_sync_progress(
@@ -1152,7 +1149,7 @@ void wait_for_zano_initial_sync(
       const auto daemon_text = regex_number(status, "current_daemon_height");
       const auto wallet_text = regex_number(status, "current_wallet_height");
       if (params && !daemon_text.empty() && !wallet_text.empty()) {
-        const auto wallet_height = std::stoull(wallet_text);
+        const auto wallet_height = zano_scanned_block_count(std::stoull(wallet_text));
         emit_privacy_sync_progress(*params, "zano", wallet_height, std::stoull(daemon_text));
         if (attempt > 0 && attempt % 20 == 0 && wallet_height > last_stored_height + 500) {
           try {
@@ -1340,13 +1337,7 @@ std::string privacy_raw_base(const std::map<std::string, std::string>& params) {
 }
 
 std::string scan_info(const std::map<std::string, std::string>& params, const std::string& coin) {
-  try {
-    const auto response = http_get(privacy_api_base(params) + "/" + coin + "/privacy/scan-info", 10000);
-    if (response.status < 200 || response.status >= 300) return "server scan-info HTTP " + std::to_string(response.status);
-    return response.body;
-  } catch (const std::exception& e) {
-    return std::string("server scan-info unavailable: ") + e.what();
-  }
+  return read_privacy_scan_info(privacy_api_base(params), coin, http_get);
 }
 
 int hex_value(char ch) {
@@ -1668,7 +1659,7 @@ bool zano_compact_output_amount(
 
   if (output.type != "zarcanum" || output.keys.size() < 5) return false;
 
-  currency::tx_out_zarcanum zc_out;
+  currency::tx_out_zarcanum zc_out{};
   uint64_t encrypted_amount = 0;
   if (!pod_from_hex(output.keys[0], zc_out.stealth_address)) return false;
   if (!pod_from_hex(output.keys[1], zc_out.concealing_point)) return false;
@@ -1680,6 +1671,9 @@ bool zano_compact_output_amount(
   crypto::public_key asset_id{};
   crypto::scalar_t amount_blinding_mask{};
   crypto::scalar_t asset_id_blinding_mask{};
+#ifdef CURRENCY_HF6_INTRINSIC_PAYMENT_ID_SIZE
+  uint64_t decoded_payment_id = 0;
+#endif
   if (!currency::is_out_to_acc(
         keys.account_address,
         zc_out,
@@ -1689,6 +1683,9 @@ bool zano_compact_output_amount(
         asset_id,
         amount_blinding_mask,
         asset_id_blinding_mask
+#ifdef CURRENCY_HF6_INTRINSIC_PAYMENT_ID_SIZE
+        , decoded_payment_id
+#endif
       )) {
     return false;
   }
@@ -2924,7 +2921,7 @@ PrivacyLightWalletResult zano_wallet(const std::map<std::string, std::string>& p
         : 4;
       if (populate_zano_balance_result(result, session.wallet_id, balance_busy_attempts, &unlocked, &raw_balance)) {
         if (get_param(params, "debugRawBalance") == "true") result.error = raw_balance;
-        if (unlocked > 0 && (expected_spendable == 0 || unlocked >= expected_spendable)) {
+        if (!session.initial_sync_pending && unlocked > 0 && (expected_spendable == 0 || unlocked >= expected_spendable)) {
           session.initial_sync_pending = false;
           result.code = "zano-native-wallet-ready";
         }
@@ -3005,7 +3002,8 @@ PrivacyLightWalletResult zano_wallet(const std::map<std::string, std::string>& p
       std::string raw_balance;
       if (populate_zano_balance_result(result, session.wallet_id, action == "send" ? ZANO_SEND_RPC_BUSY_ATTEMPTS : 4, &unlocked, &raw_balance)
           && unlocked > 0
-          && (action != "send" || unlocked >= send_required)) {
+          && (action != "send" || unlocked >= send_required)
+          && zano_status_ready(zano_wallet_status(session.wallet_id))) {
         session.initial_sync_pending = false;
       }
       if (get_param(params, "debugRawBalance") == "true" && !raw_balance.empty()) result.error = raw_balance;

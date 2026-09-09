@@ -8,3 +8,4 @@
 
 using AltbaseMoneroWalletRequest = char* (ALTBASE_MONERO_WALLET_CALL*)(const char* request);
 using AltbaseMoneroWalletFree = void (ALTBASE_MONERO_WALLET_CALL*)(char* value);
+

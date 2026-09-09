@@ -183,6 +183,8 @@ endfunction()
 
 altbase_add_utxo_wallet_module(bitcoin Bitcoin)
 altbase_add_utxo_wallet_module(bitcoin2 Bitcoin2)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../modules/bitcoin2/native/wallet.cmake")
+altbase_configure_bc2_wallet(altbase_bitcoin2_wallet "${CMAKE_CURRENT_SOURCE_DIR}/src")
 altbase_add_utxo_wallet_module(bitcoincashii BitcoinCashII)
 altbase_add_utxo_wallet_module(firo Firo)
 altbase_add_utxo_wallet_module(btgs BitcoinGoldStake)
@@ -264,6 +266,7 @@ altbase_add_coin_node_module(quai Quai)
 altbase_add_coin_node_module(xgr XGR)
 altbase_add_coin_node_module(qubic Qubic)
 altbase_add_coin_node_module(kaspa Kaspa)
+altbase_add_coin_node_module(nonsense Nonsense)
 altbase_add_coin_node_module(ckb NervosCKB)
 
 set(ALTBASE_CORE_BRIDGE_SOURCES
@@ -309,13 +312,17 @@ target_compile_definitions(altbase_core_bridge PRIVATE
 )
 
 set(ZANO_NATIVE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/zano_native_lib")
-set(ZANO_SOURCE_ROOT "${ZANO_NATIVE_ROOT}/Zano")
+set(ZANO_SOURCE_ROOT "${ZANO_NATIVE_ROOT}/Zano" CACHE PATH "Zano source tree, HF6 compatible for mainnet")
 set(ZANO_BUILD_ROOT "${ZANO_SOURCE_ROOT}/build/altbase-vs2022-x64")
 set(ZANO_RELEASE_SRC "${ZANO_BUILD_ROOT}/src/Release")
 set(ZANO_RELEASE_CONTRIB "${ZANO_BUILD_ROOT}/contrib")
-set(ZANO_LINUX_BUILD_ROOT "${ZANO_SOURCE_ROOT}/build/altbase-linux-x64")
+set(ZANO_LINUX_BUILD_ROOT "${ZANO_SOURCE_ROOT}/build/altbase-linux-x64" CACHE PATH "Prepared Linux Zano libraries matching ZANO_SOURCE_ROOT")
 set(ZANO_LINUX_SRC "${ZANO_LINUX_BUILD_ROOT}/src")
 set(ZANO_LINUX_CONTRIB "${ZANO_LINUX_BUILD_ROOT}/contrib")
+# HF6 wallet stacktrace support; selected Linux source/build may be overridden above.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(ALTBASE_ZANO_HF6_SYSTEM_LIBS backtrace dl)
+endif()
 
 if (WIN32 AND EXISTS "${ZANO_RELEASE_SRC}/currency_core.lib")
   set(ZANO_WINDOWS_DEFINES
@@ -448,6 +455,7 @@ elseif(UNIX AND NOT APPLE AND EXISTS "${ZANO_LINUX_SRC}/libcurrency_core.a")
     ${Boost_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
+    ${ALTBASE_ZANO_HF6_SYSTEM_LIBS}
   )
 elseif(APPLE AND EXISTS "${ZANO_MACOS_PLAIN_WALLET_LIB}")
   find_package(Threads REQUIRED)
@@ -614,6 +622,7 @@ elseif(UNIX AND NOT APPLE)
     ${Boost_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
+    ${ALTBASE_ZANO_HF6_SYSTEM_LIBS}
   )
 
   set(EPIC_MODULE_RELEASE_DIR "$ENV{ALTBASE_EPIC_TRANSPORT_LIB_DIR}")
