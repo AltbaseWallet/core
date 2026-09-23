@@ -188,12 +188,12 @@ char* dispatch_request(const std::string& line, void (**release)(char*)) {
   if (parsed.has_value() && parsed->method == "listWalletModules") {
     *release = bridge_free;
     return copy_response(altbase::ok_response(parsed->id, {
-      {"utxo", "bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl"},
+      {"utxo", "bitcoincash,digibyte,peercoin,bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl"},
       {"privacy", "zano,epic,monero"},
       {"account", "quai,xgr,qubic"},
       {"dag", "kaspa,nonsense"},
       {"cell", "ckb"},
-      {"node", "bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl,zano,epic,quai,xgr,qubic,kaspa,nonsense,ckb"},
+      {"node", "nexa,zcash,bitcoincash,digibyte,peercoin,bitcoin,bitcoin2,bitcoincashii,firo,btgs,capstash,hypercoin,mydogecoin,pepecoin,kerrigan,scash,litecoinii,neoxa,terracoin,junkcoin,raptoreum,pearl,zano,epic,quai,xgr,qubic,kaspa,nonsense,ckb"},
     }));
   }
 #ifdef ALTBASE_SEPARATE_PRIVACY_MODULES
@@ -220,6 +220,9 @@ char* dispatch_request(const std::string& line, void (**release)(char*)) {
     FreeFunction free;
   };
   static const std::map<std::string, WalletModuleApi> utxo_modules = {
+    {"bitcoincash", {altbase_bitcoincash_wallet_request, altbase_bitcoincash_wallet_free}},
+    {"digibyte", {altbase_digibyte_wallet_request, altbase_digibyte_wallet_free}},
+    {"peercoin", {altbase_peercoin_wallet_request, altbase_peercoin_wallet_free}},
     {"bitcoin", {altbase_bitcoin_wallet_request, altbase_bitcoin_wallet_free}},
     {"bitcoin2", {altbase_bitcoin2_wallet_request, altbase_bitcoin2_wallet_free}},
     {"bitcoincashii", {altbase_bitcoincashii_wallet_request, altbase_bitcoincashii_wallet_free}},
@@ -239,6 +242,11 @@ char* dispatch_request(const std::string& line, void (**release)(char*)) {
     {"pearl", {altbase_pearl_wallet_request, altbase_pearl_wallet_free}},
   };
   static const std::map<std::string, WalletModuleApi> node_modules = {
+    {"bitcoincash", {altbase_bitcoincash_node_request, altbase_bitcoincash_node_free}},
+    {"digibyte", {altbase_digibyte_node_request, altbase_digibyte_node_free}},
+    {"peercoin", {altbase_peercoin_node_request, altbase_peercoin_node_free}},
+    {"nexa", {altbase_nexa_node_request, altbase_nexa_node_free}},
+    {"zcash", {altbase_zcash_node_request, altbase_zcash_node_free}},
     {"bitcoin", {altbase_bitcoin_node_request, altbase_bitcoin_node_free}},
     {"bitcoin2", {altbase_bitcoin2_node_request, altbase_bitcoin2_node_free}},
     {"bitcoincashii", {altbase_bitcoincashii_node_request, altbase_bitcoincashii_node_free}},

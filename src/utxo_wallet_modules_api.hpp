@@ -12,6 +12,9 @@
   ALTBASE_UTXO_IMPORT char* ALTBASE_UTXO_CALL altbase_##name##_wallet_request(const char* request); \
   ALTBASE_UTXO_IMPORT void ALTBASE_UTXO_CALL altbase_##name##_wallet_free(char* value)
 
+ALTBASE_DECLARE_UTXO_WALLET(bitcoincash);
+ALTBASE_DECLARE_UTXO_WALLET(digibyte);
+ALTBASE_DECLARE_UTXO_WALLET(peercoin);
 ALTBASE_DECLARE_UTXO_WALLET(bitcoin2);
 ALTBASE_DECLARE_UTXO_WALLET(bitcoin);
 ALTBASE_DECLARE_UTXO_WALLET(bitcoincashii);
