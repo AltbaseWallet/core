@@ -29,6 +29,10 @@ std::map<std::string, std::string> handle_wallet_vault(const Request& request) {
   if (request.method == "decryptWalletSecret") {
     return {{"phrase", decrypt_wallet_secret(request.params)}};
   }
+  if (request.method == "privacyScope") {
+    const auto secret = privacy_wallet_secret(request.params);
+    return {{"enginePassword", secret.engine_password}, {"scope", secret.scope}, {"payload", secret.payload}};
+  }
   throw std::runtime_error("unknown vault method: " + request.method);
 }
 
