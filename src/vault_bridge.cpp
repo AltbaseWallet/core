@@ -20,7 +20,11 @@ int main(int argc, char** argv) {
   auto library = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
   auto symbol = [&](const char* name) { return reinterpret_cast<void*>(GetProcAddress(library, name)); };
 #else
+#ifdef __APPLE__
+  const auto file = std::filesystem::path(argv[0]).parent_path() / "libaltbase_wallet_vault.dylib";
+#else
   const auto file = std::filesystem::path(argv[0]).parent_path() / "libaltbase_wallet_vault.so";
+#endif
   auto library = dlopen(file.c_str(), RTLD_NOW | RTLD_LOCAL);
   auto symbol = [&](const char* name) { return dlsym(library, name); };
 #endif

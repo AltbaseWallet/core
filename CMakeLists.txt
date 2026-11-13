@@ -15,6 +15,11 @@ target_compile_definitions(altbase_wallet_vault PRIVATE
 set_target_properties(altbase_wallet_vault PROPERTIES
   CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES
   BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN")
+if(APPLE)
+  set_target_properties(altbase_wallet_vault PROPERTIES
+    BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path"
+    MACOSX_RPATH ON INSTALL_NAME_DIR "@rpath")
+endif()
 if(WIN32)
   set_target_properties(altbase_wallet_vault PROPERTIES PREFIX "")
   target_link_libraries(altbase_wallet_vault PRIVATE bcrypt winhttp)
